@@ -1,0 +1,65 @@
+name: Build Windows executable
+
+'on':
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Windows Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Test backend
+        run: python -m unittest discover -s tests -v
+
+      - name: Test native Tkinter workflow
+        timeout-minutes: 3
+        run: python tests/gui_workflow.py
+
+      - name: Install build tool
+        run: python -m pip install pyinstaller==6.22.3
+
+      - name: Build standalone Windows application
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name StudyPilot app.py
+
+      - name: Prepare downloads
+        shell: pwsh
+        run: |
+          Copy-Item WINDOWS_README.txt dist/README.txt
+          Compress-Archive -Path dist/StudyPilot.exe,dist/README.txt -DestinationPath dist/StudyPilot-Windows.zip
+          $hash = (Get-FileHash dist/StudyPilot.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  StudyPilot.exe" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+
+      - name: Keep workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudyPilot-Windows
+          path: |
+            dist/StudyPilot.exe
+            dist/StudyPilot-Windows.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish downloadable Windows release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: windows-${{ github.run_number }}-${{ github.run_attempt }}
+        run: |
+          gh release create "$env:RELEASE_TAG" dist/StudyPilot.exe dist/StudyPilot-Windows.zip dist/SHA256SUMS.txt --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --title "StudyPilot for Windows" --notes-file WINDOWS_README.txt --latest

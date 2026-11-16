@@ -1,0 +1,2 @@
+# No pip packages required. StudyPilot uses the Python standard library only.
+# Tkinter must be included in your Python installation (python3-tk on Debian/Ubuntu).
